@@ -437,7 +437,9 @@ def closest_point(tree, query_point, query_no):
 #  逐行计算O，D点的KNN，以及flow的KNN
 def row_knn(O, D):
     #  k近邻实际上求的是k+1近邻，因为会把自身也算进去
+    log.info("计算O点的KNN...")
     closest_O = tree_O.query(O, _k + 1, return_distance=False)
+    log.info("计算D点的KNN...")
     closest_D = tree_D.query(D, _k + 1, return_distance=False)
 
     OD_id = input_data[['Oid', 'Did']]
@@ -460,6 +462,7 @@ def row_knn(O, D):
     df['O_knn'] = np.array(closest_O).tolist()
     df['D_knn'] = np.array(closest_D).tolist()
 
+    log.info("计算O点KNN所属的flow...")
     closest_O = np.array(closest_O).tolist()
     # s = time.time()
     id_arr = input_data['Oid'].to_numpy()
@@ -468,6 +471,7 @@ def row_knn(O, D):
     # e = time.time()
     # print(e - s)
 
+    log.info("计算D点KNN所属的flow...")
     closest_D = np.array(closest_D).tolist()
     id_arr = input_data['Did'].to_numpy()
     flowIDs = query_flowIDs_by_pointIDs_as_list(closest_D, id_arr)
@@ -494,6 +498,7 @@ def row_knn(O, D):
     # m = df.apply(intersect, axis=1)
 
     # 更快
+    log.info("计算flow的KNN...")
     df['flow_knn'] = [list(set(a).intersection(b)) for a, b in zip(df['O_flow_knn'], df['D_flow_knn'])]
 
     return df
