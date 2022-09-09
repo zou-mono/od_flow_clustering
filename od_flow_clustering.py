@@ -374,7 +374,10 @@ def output_class(class_arr, merge_class):
                 cls = flow_dict[cID]
                 row.append(cls['Oid'])
                 row.append(cls['Did'])
-                row.append(cls['weight'])
+                if bWeight:
+                    row.append(cls['weight'])
+                else:
+                    row.append(1)
             writer.writerow(row)
 
     # print("debug")
