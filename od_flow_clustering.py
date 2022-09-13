@@ -61,6 +61,8 @@ def main(inpath, k, precision):
 
         global input_data
 
+        log.info("开始计算{}, 参数k={}, p={}".format(inpath, _k, precision))
+
         log.info("读取数据...")
         input_data = pd.read_excel(inpath)
         # input_data['label'] = input_data.index
@@ -101,7 +103,7 @@ def main(inpath, k, precision):
         log.info("按照定义1.1和定义2计算point和flow的KNN...")
 
         global df_knn
-        df_knn = row_knn(input_data[['Ox', 'Oy']], input_data[['Dx', 'Dy']])
+        df_knn = row_knn(input_data[['Ox', 'Oy']], input_data[['Dx', 'Dy']], O_points, D_points)
 
         # contiguous_flow_pairs = pd.DataFrame(columns=['p','q', 'dist'])
         global flow_dict
@@ -435,49 +437,68 @@ def closest_point(tree, query_point, query_no):
 
 
 #  逐行计算O，D点的KNN，以及flow的KNN
-def row_knn(O, D):
+def row_knn(O, D, O_points, D_points):
     #  k近邻实际上求的是k+1近邻，因为会把自身也算进去
-    log.info("计算O点的KNN...")
+    log.info("KD树检索...")
     closest_O = tree_O.query(O, _k + 1, return_distance=False)
-    log.info("计算D点的KNN...")
+    # log.info("计算D点的KNN...")
     closest_D = tree_D.query(D, _k + 1, return_distance=False)
 
+    df = pd.DataFrame(columns=['O_knn', 'D_knn'])
     OD_id = input_data[['Oid', 'Did']]
-    OD_id = OD_id.to_dict()
 
+    log.info("计算O点KNN...")
+    OD_id = OD_id.to_dict()
     vfunc_O = np.vectorize(lambda n: OD_id['Oid'][n])
     vfunc_D = np.vectorize(lambda n: OD_id['Did'][n])
 
-    # closest_O = pd.DataFrame(closest_O)
-    # # closest_O['arr'] = closest_O.apply(lambda s: s.to_numpy(), axis=1)
-    #
-    # closest_D = pd.DataFrame(closest_D)
-    # closest_D['arr'] = closest_D.apply(lambda s: s.to_numpy(), axis=1)
+    log.info("计算D点KNN...")
+    closest_pt = vfunc_O(closest_O)
+    df['O_knn'] = np.array(closest_pt).tolist()
+    closest_pt = vfunc_D(closest_D)
+    df['D_knn'] = np.array(closest_pt).tolist()
 
-    df = pd.DataFrame(columns=['O_knn', 'D_knn'])
-    # df['no'] = df.index
+    # v = np.vectorize(lambda n: np.where(OD_id['Oid'] == n))
+    # vv = v(O_points['Oid'].tolist())
 
-    closest_O = vfunc_O(closest_O)
-    closest_D = vfunc_D(closest_D)
-    df['O_knn'] = np.array(closest_O).tolist()
-    df['D_knn'] = np.array(closest_D).tolist()
+    OD_id = input_data[['Oid', 'Did']]
 
     log.info("计算O点KNN所属的flow...")
-    closest_O = np.array(closest_O).tolist()
+    closest_pt = np.array(df['O_knn']).tolist()
     # s = time.time()
-    id_arr = input_data['Oid'].to_numpy()
-    flowIDs = query_flowIDs_by_pointIDs_as_list(closest_O, id_arr)
+    # id_arr = input_data['Oid'].to_numpy()
+    O_points = O_points['Oid'].tolist()
+    df_flows = pd.DataFrame(columns=['Oid', 'flows'])
+    df_flows['Oid'] = O_points
+    df_flows['flows'] = list(map(lambda n: np.where(OD_id['Oid'] == n), O_points))
+    df_flows = df_flows.set_index('Oid')
+    df_dict = df_flows['flows']
+    del df_flows
+    del O_points
+
+    flowIDs = query_flowIDs_by_pointIDs_as_list2(closest_pt, df_dict)
+    # flowIDs = query_flowIDs_by_pointIDs_as_list(closest_O, id_arr)
     df['O_flow_knn'] = list(map(lambda m: np.concatenate(m, axis=1).tolist()[0], flowIDs))
     # e = time.time()
     # print(e - s)
 
     log.info("计算D点KNN所属的flow...")
-    closest_D = np.array(closest_D).tolist()
-    id_arr = input_data['Did'].to_numpy()
-    flowIDs = query_flowIDs_by_pointIDs_as_list(closest_D, id_arr)
+    # id_arr = input_data['Did'].to_numpy()
+    closest_pt = np.array(np.array(df['D_knn'])).tolist()
+    D_points = D_points['Did'].tolist()
+    df_flows = pd.DataFrame(columns=['Did', 'flows'])
+    df_flows['Did'] = D_points
+    df_flows['flows'] = list(map(lambda n: np.where(OD_id['Did'] == n), D_points))
+    df_flows = df_flows.set_index('Did')
+    df_dict = df_flows['flows']
+    del df_flows
+    del D_points
+
+    # flowIDs = query_flowIDs_by_pointIDs_as_list(closest_D, id_arr)
+    flowIDs = query_flowIDs_by_pointIDs_as_list2(closest_pt, df_dict)
     df['D_flow_knn'] = list(map(lambda m: np.concatenate(m, axis=1).tolist()[0], flowIDs))
 
-    ##  稍慢
+    # 稍慢
     # s = time.time()
     # df['O_flow_knn'] = \
     #     list(map(
@@ -502,6 +523,13 @@ def row_knn(O, D):
     df['flow_knn'] = [list(set(a).intersection(b)) for a, b in zip(df['O_flow_knn'], df['D_flow_knn'])]
 
     return df
+
+def query_flowIDs_by_pointIDs_as_list2(closest_point, point_flows_dict):
+    return list(map(lambda m: query_flowIDs_by_pointID2(m, point_flows_dict), closest_point))
+
+
+def query_flowIDs_by_pointID2(pointIDs, point_flows_dict):
+    return list(map(lambda m: point_flows_dict[m], pointIDs))
 
 
 def query_flowIDs_by_pointIDs_as_list(closest_point, id_arr):
