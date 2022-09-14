@@ -9,6 +9,7 @@ import click
 import logging
 import colorlog
 import traceback
+import numba as nb
 
 # k = 20
 # precision = 6  # 判断两个点是否相同的精度，例如6表示小数点后六位相同的坐标值则认为是同一个点
@@ -111,7 +112,7 @@ def main(inpath, k, precision):
         merge_class = {}  # 用于存储已经合并过的分类,以及每个class的centroid坐标
 
         # class_arr = input_data['label'].to_numpy().reshape(-1, 1)
-        class_arr = input_data.index.array.to_numpy().reshape(-1, 1)
+        class_arr = input_data.index.array.to_numpy().astype(np.uint32)
 
         del input_data
 
@@ -128,7 +129,7 @@ def main(inpath, k, precision):
 
             # 根据dist进行排序
             for contiguous_flow_ID in flow_knn:
-                if len(contiguous_flow_pairs) == k:  # knn自身也会被算进去，要排除掉
+                if len(contiguous_flow_pairs) == _k:  # knn自身也会被算进去，要排除掉
                     break
 
                 if iflow_row != contiguous_flow_ID:
@@ -137,6 +138,7 @@ def main(inpath, k, precision):
                     dist = SNN_flow_distance(p_flow, p_flow, q_flow, q_flow)
                     # contiguous_flow_pairs.loc[i] = [irow, intersect, dist]
                     contiguous_flow_pairs.append([contiguous_flow_ID, dist])
+            # list(map(lambda n: SNN_list(n, iflow_row, p_flow, contiguous_flow_pairs), flow_knn))
 
             if len(contiguous_flow_pairs) > 1:
                 contiguous_flow_pairs.sort(key=lambda x: x[1])
@@ -181,7 +183,15 @@ def main(inpath, k, precision):
                                                 round((flow_dict[Cx_ID]['Dy'] + flow_dict[Cy_ID]['Dy']) / 2, precision)],
                                 'weight': weight
                             }
-                            class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                            # start1 = time.time()
+                            # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                            # change_ID = nb.uint32(change_ID)
+                            # C_ID = nb.uint32(C_ID)
+                            class_arr = assign_value(class_arr, change_ID, C_ID)
+                            # end1 = time.time()
+                            #
+                            # if (end1 - start1) * 1000000 > 0:
+                            #     print((end1 - start1) * 1000000)
 
                         #  如果两条flow不是第一次被访问到，则需要重新计算class_distance
                         else:
@@ -205,7 +215,8 @@ def main(inpath, k, precision):
                                         'weight': weight
 
                                     }
-                                    class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                                    class_arr = assign_value(class_arr, change_ID, C_ID)
+                                    # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
 
                                 elif Cx_ID == p_ID and Cy_ID != q_ID:
                                     if bWeight:
@@ -221,7 +232,8 @@ def main(inpath, k, precision):
                                         'weight': weight
 
                                     }
-                                    class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                                    class_arr = assign_value(class_arr, change_ID, C_ID)
+                                    # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
 
                                 elif Cx_ID != p_ID and Cy_ID != q_ID:
                                     weight = merge_class[Cx_ID]['weight'] + merge_class[Cy_ID]['weight']
@@ -233,13 +245,18 @@ def main(inpath, k, precision):
                                                        round((merge_class[Cx_ID]['centroid_D'][1] + merge_class[Cy_ID]['centroid_D'][1]) / 2, precision)],
                                         'weight': weight
                                     }
-
-                                    class_arr = np.where(class_arr == p_ID, C_ID, class_arr)
-                                    class_arr = np.where(class_arr == q_ID, C_ID, class_arr)
+                                    class_arr = assign_value(class_arr, p_ID, C_ID)
+                                    class_arr = assign_value(class_arr, q_ID, C_ID)
                                     if Cx_ID > Cy_ID:
-                                        class_arr = np.where(class_arr == Cx_ID, C_ID, class_arr)
+                                        class_arr = assign_value(class_arr, Cx_ID, C_ID)
                                     else:
-                                        class_arr = np.where(class_arr == Cy_ID, C_ID, class_arr)
+                                        class_arr = assign_value(class_arr, Cy_ID, C_ID)
+                                    # class_arr = np.where(class_arr == p_ID, C_ID, class_arr)
+                                    # class_arr = np.where(class_arr == q_ID, C_ID, class_arr)
+                                    # if Cx_ID > Cy_ID:
+                                    #     class_arr = np.where(class_arr == Cx_ID, C_ID, class_arr)
+                                    # else:
+                                    #     class_arr = np.where(class_arr == Cy_ID, C_ID, class_arr)
                 else:
                     break
 
@@ -262,6 +279,28 @@ def main(inpath, k, precision):
         log.error("输入文件格式错误!")
     except:
         log.error(traceback.format_exc())
+
+
+# @nb.jit("uint32[:](uint32[:], uint32, uint32)", nopython=True, parallel=True)
+# @nb.jit(nopython=True, parallel=True)
+@nb.njit()
+def assign_value(arr, e, v):
+    for i in nb.prange(arr.shape[0]):
+        if arr[i] == e:
+            arr[i] = v
+    return arr
+
+
+def SNN_list(contiguous_flow_ID, iflow_row, p_flow, contiguous_flow_pairs):
+    if len(contiguous_flow_pairs) == _k:  # knn自身也会被算进去，要排除掉
+        return
+
+    if iflow_row != contiguous_flow_ID:
+        q_flow = df_knn.iloc[contiguous_flow_ID]
+
+        dist = SNN_flow_distance(p_flow, p_flow, q_flow, q_flow)
+        # contiguous_flow_pairs.loc[i] = [irow, intersect, dist]
+        contiguous_flow_pairs.append([contiguous_flow_ID, dist])
 
 
 def check_and_create_outpath():
@@ -472,8 +511,6 @@ def row_knn(O, D, O_points, D_points):
     df_flows['flows'] = list(map(lambda n: np.where(OD_id['Oid'] == n), O_points))
     df_flows = df_flows.set_index('Oid')
     df_dict = df_flows['flows']
-    del df_flows
-    del O_points
 
     flowIDs = query_flowIDs_by_pointIDs_as_list2(closest_pt, df_dict)
     # flowIDs = query_flowIDs_by_pointIDs_as_list(closest_O, id_arr)
@@ -490,6 +527,7 @@ def row_knn(O, D, O_points, D_points):
     df_flows['flows'] = list(map(lambda n: np.where(OD_id['Did'] == n), D_points))
     df_flows = df_flows.set_index('Did')
     df_dict = df_flows['flows']
+
     del df_flows
     del D_points
 
