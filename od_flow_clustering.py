@@ -121,7 +121,7 @@ def main(inpath, k, precision):
         iprogress = 0 # 进程百分比
         iprop = 1
 
-        for p_flow in df_knn.itertuples():
+        for p_flow in df_knn.itertuples(index=False):
             flow_knn = p_flow.flow_knn
 
             contiguous_flow_pairs = []
@@ -181,10 +181,8 @@ def main(inpath, k, precision):
                                                 round((flow_dict[Cx_ID]['Dy'] + flow_dict[Cy_ID]['Dy']) / 2, precision)],
                                 'weight': weight
                             }
-
                             class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
 
-                            continue
                         #  如果两条flow不是第一次被访问到，则需要重新计算class_distance
                         else:
                             class_dist = class_distance(p_ID, q_ID, Cx_ID, Cy_ID, merge_class)
@@ -252,6 +250,7 @@ def main(inpath, k, precision):
             iflow_row += 1
             # log.info("{:.0%}".format(iflow_row / total_count))
 
+        log.info("输出聚类结果...")
         output_class(class_arr, merge_class)
 
         end = time.time()
