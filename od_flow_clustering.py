@@ -112,8 +112,8 @@ def main(inpath, k, precision):
         merge_class = {}  # 用于存储已经合并过的分类,以及每个class的centroid坐标
 
         # class_arr = input_data['label'].to_numpy().reshape(-1, 1)
-        # class_arr = input_data.index.array.to_numpy().astype(np.uint32)
-        class_arr = input_data.index.array.to_numpy()
+        class_arr = input_data.index.array.to_numpy().astype(np.uint32)
+        # class_arr = input_data.index.array.to_numpy()
 
         del input_data
 
@@ -166,6 +166,20 @@ def main(inpath, k, precision):
                         C_ID = Cy_ID if Cx_ID > Cy_ID else Cx_ID # 取比较小的那个class的ID做为合并后class的ID
                         change_ID = q_ID if C_ID == p_ID else p_ID
 
+                        # start = time.time()
+                        # # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                        # for i in range(1000):
+                        #     # d = np.where(class_arr == change_ID, 999, C_ID)
+                        #     class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                        # end = time.time()
+                        # print((end-start)*1000000)
+
+                        # start = time.time()
+                        # for i in range(1000):
+                        #     class_arr = assign_value(class_arr, change_ID, C_ID)
+                        # end = time.time()
+                        # print((end-start)*1000000)
+
                         # if C_ID == 5677:
                         #     print("debug")
 
@@ -186,13 +200,13 @@ def main(inpath, k, precision):
                             }
                             # start1 = time.time()
                             # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
-                            # change_ID = nb.uint32(change_ID)
-                            # C_ID = nb.uint32(C_ID)
-                            class_arr = assign_value(class_arr, change_ID, C_ID)
                             # end1 = time.time()
-                            #
-                            # if (end1 - start1) * 1000000 > 0:
-                            #     print((end1 - start1) * 1000000)
+                            # print("np.where {}".format((end1 - start1) * 1000000))
+
+                            # start2 = time.time()
+                            class_arr = assign_value(class_arr, change_ID, C_ID)
+                            # end2 = time.time()
+                            # print("numba {}".format((end2 - start2) * 1000000))
 
                         #  如果两条flow不是第一次被访问到，则需要重新计算class_distance
                         else:
@@ -282,10 +296,17 @@ def main(inpath, k, precision):
         log.error(traceback.format_exc())
 
 
-# @nb.jit("uint32[:](uint32[:], uint32, uint32)", nopython=True, parallel=True)
-@nb.jit(nopython=True, parallel=True)
+@nb.jit(nopython=True)
+def compare_nb(a, b, c):
+    for i in range(a.shape[0]):
+        if a[i] == b:
+            a[i] = c
+    return a
+
+@nb.jit("uint32[:](uint32[:], int32, int64)", nopython=True)
+# @nb.jit(nopython=True)
 def assign_value(arr, e, v):
-    for i in nb.prange(arr.shape[0]):
+    for i in range(arr.shape[0]):
         if arr[i] == e:
             arr[i] = v
     return arr
