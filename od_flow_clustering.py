@@ -112,7 +112,8 @@ def main(inpath, k, precision):
         merge_class = {}  # 用于存储已经合并过的分类,以及每个class的centroid坐标
 
         # class_arr = input_data['label'].to_numpy().reshape(-1, 1)
-        class_arr = input_data.index.array.to_numpy().astype(np.uint32)
+        # class_arr = input_data.index.array.to_numpy().astype(np.uint32)
+        class_arr = input_data.index.array.to_numpy()
 
         del input_data
 
@@ -282,8 +283,7 @@ def main(inpath, k, precision):
 
 
 # @nb.jit("uint32[:](uint32[:], uint32, uint32)", nopython=True, parallel=True)
-# @nb.jit(nopython=True, parallel=True)
-@nb.njit()
+@nb.jit(nopython=True, parallel=True)
 def assign_value(arr, e, v):
     for i in nb.prange(arr.shape[0]):
         if arr[i] == e:
