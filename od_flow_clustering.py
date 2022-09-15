@@ -112,8 +112,8 @@ def main(inpath, k, precision):
         merge_class = {}  # 用于存储已经合并过的分类,以及每个class的centroid坐标
 
         # class_arr = input_data['label'].to_numpy().reshape(-1, 1)
-        class_arr = input_data.index.array.to_numpy().astype(np.uint32)
-        # class_arr = input_data.index.array.to_numpy()
+        class_arr = input_data.index.array.to_numpy().astype(np.uint32)  # 用一个array存储flow所在的classID
+        flow_arr = input_data.index.array.to_numpy().reshape(-1, 1).tolist()  # 用一个List存储class所包含的flow，可以提高更新class_arr的速度
 
         del input_data
 
@@ -168,17 +168,14 @@ def main(inpath, k, precision):
 
                         # start = time.time()
                         # # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
-                        # for i in range(1000):
-                        #     # d = np.where(class_arr == change_ID, 999, C_ID)
-                        #     class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                        # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
                         # end = time.time()
-                        # print((end-start)*1000000)
+                        # print("np.where {}".format((end-start)*1000000))
 
                         # start = time.time()
-                        # for i in range(1000):
-                        #     class_arr = assign_value(class_arr, change_ID, C_ID)
+                        # class_arr = assign_value(class_arr, change_ID, C_ID)
                         # end = time.time()
-                        # print((end-start)*1000000)
+                        # print("numba {}".format((end-start)*1000000))
 
                         # if C_ID == 5677:
                         #     print("debug")
@@ -198,13 +195,17 @@ def main(inpath, k, precision):
                                                 round((flow_dict[Cx_ID]['Dy'] + flow_dict[Cy_ID]['Dy']) / 2, precision)],
                                 'weight': weight
                             }
+
+                            class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                            # assign_value2(class_arr, flow_arr[change_ID], C_ID)
+                            flow_arr[C_ID].extend(flow_arr[change_ID])
                             # start1 = time.time()
                             # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
                             # end1 = time.time()
                             # print("np.where {}".format((end1 - start1) * 1000000))
 
                             # start2 = time.time()
-                            class_arr = assign_value(class_arr, change_ID, C_ID)
+                            # class_arr = assign_value(class_arr, change_ID, C_ID)
                             # end2 = time.time()
                             # print("numba {}".format((end2 - start2) * 1000000))
 
@@ -230,7 +231,10 @@ def main(inpath, k, precision):
                                         'weight': weight
 
                                     }
-                                    class_arr = assign_value(class_arr, change_ID, C_ID)
+                                    class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                                    # assign_value2(class_arr, flow_arr[change_ID], C_ID)
+                                    flow_arr[C_ID].extend(flow_arr[change_ID])
+                                    # class_arr = assign_value(class_arr, change_ID, C_ID)
                                     # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
 
                                 elif Cx_ID == p_ID and Cy_ID != q_ID:
@@ -247,7 +251,10 @@ def main(inpath, k, precision):
                                         'weight': weight
 
                                     }
-                                    class_arr = assign_value(class_arr, change_ID, C_ID)
+                                    class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                                    # assign_value2(class_arr, flow_arr[change_ID], C_ID)
+                                    flow_arr[C_ID].extend(flow_arr[change_ID])
+                                    # class_arr = assign_value(class_arr, change_ID, C_ID)
                                     # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
 
                                 elif Cx_ID != p_ID and Cy_ID != q_ID:
@@ -260,12 +267,25 @@ def main(inpath, k, precision):
                                                        round((merge_class[Cx_ID]['centroid_D'][1] + merge_class[Cy_ID]['centroid_D'][1]) / 2, precision)],
                                         'weight': weight
                                     }
-                                    class_arr = assign_value(class_arr, p_ID, C_ID)
-                                    class_arr = assign_value(class_arr, q_ID, C_ID)
+
+                                    class_arr = assign_value2_nb(class_arr, np.array(flow_arr[p_ID]), C_ID)
+                                    class_arr = assign_value2_nb(class_arr, np.array(flow_arr[q_ID]), C_ID)
+                                    # assign_value2(class_arr, flow_arr[p_ID], C_ID)
+                                    # assign_value2(class_arr, flow_arr[q_ID], C_ID)
                                     if Cx_ID > Cy_ID:
-                                        class_arr = assign_value(class_arr, Cx_ID, C_ID)
+                                        # assign_value2(class_arr, flow_arr[Cx_ID], C_ID)
+                                        class_arr = assign_value2_nb(class_arr, np.array(flow_arr[Cx_ID]), C_ID)
+                                        flow_arr[C_ID].extend(flow_arr[Cx_ID])
                                     else:
-                                        class_arr = assign_value(class_arr, Cy_ID, C_ID)
+                                        # assign_value2(class_arr, flow_arr[Cy_ID], C_ID)
+                                        class_arr = assign_value2_nb(class_arr, np.array(flow_arr[Cy_ID]), C_ID)
+                                        flow_arr[C_ID].extend(flow_arr[Cy_ID])
+                                    # class_arr = assign_value(class_arr, p_ID, C_ID)
+                                    # class_arr = assign_value(class_arr, q_ID, C_ID)
+                                    # if Cx_ID > Cy_ID:
+                                    #     class_arr = assign_value(class_arr, Cx_ID, C_ID)
+                                    # else:
+                                    #     class_arr = assign_value(class_arr, Cy_ID, C_ID)
                                     # class_arr = np.where(class_arr == p_ID, C_ID, class_arr)
                                     # class_arr = np.where(class_arr == q_ID, C_ID, class_arr)
                                     # if Cx_ID > Cy_ID:
@@ -296,20 +316,25 @@ def main(inpath, k, precision):
         log.error(traceback.format_exc())
 
 
-@nb.jit(nopython=True)
-def compare_nb(a, b, c):
-    for i in range(a.shape[0]):
-        if a[i] == b:
-            a[i] = c
-    return a
-
 @nb.jit("uint32[:](uint32[:], int32, int64)", nopython=True)
 # @nb.jit(nopython=True)
-def assign_value(arr, e, v):
+def assign_value_nb(arr, e, v):
     for i in range(arr.shape[0]):
         if arr[i] == e:
             arr[i] = v
     return arr
+
+
+def assign_value2(class_arr, update_arr, v):
+    for i in update_arr:
+        class_arr[i] = v
+
+
+# @nb.jit(nopython=True)
+def assign_value2_nb(class_arr, update_arr, v):
+    for i in range(update_arr.shape[0]):
+        class_arr[update_arr[i]] = v
+    return class_arr
 
 
 def SNN_list(contiguous_flow_ID, iflow_row, p_flow, contiguous_flow_pairs):
