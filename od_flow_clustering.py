@@ -330,7 +330,7 @@ def assign_value2(class_arr, update_arr, v):
         class_arr[i] = v
 
 
-# @nb.jit(nopython=True)
+@nb.jit(nopython=True)
 def assign_value2_nb(class_arr, update_arr, v):
     for i in range(update_arr.shape[0]):
         class_arr[update_arr[i]] = v
