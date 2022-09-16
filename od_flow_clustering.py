@@ -10,6 +10,7 @@ import logging
 import colorlog
 import traceback
 import numba as nb
+from itertools import chain
 
 # k = 20
 # precision = 6  # 判断两个点是否相同的精度，例如6表示小数点后六位相同的坐标值则认为是同一个点
@@ -163,8 +164,14 @@ def main(inpath, k, precision):
                     Cy_ID = class_arr.item(q_ID)
 
                     if Cx_ID != Cy_ID:
-                        C_ID = Cy_ID if Cx_ID > Cy_ID else Cx_ID # 取比较小的那个class的ID做为合并后class的ID
-                        change_ID = q_ID if C_ID == p_ID else p_ID
+                        # C_ID = Cy_ID if Cx_ID > Cy_ID else Cx_ID # 取比较小的那个class的ID做为合并后class的ID
+                        # change_ID = Cy_ID if Cy_ID > Cx_ID else Cx_ID
+                        if Cx_ID > Cy_ID:
+                            change_ID = Cx_ID
+                            C_ID = Cy_ID
+                        else:
+                            change_ID = Cy_ID
+                            C_ID = Cx_ID
 
                         # start = time.time()
                         # # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
@@ -199,6 +206,7 @@ def main(inpath, k, precision):
                             class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
                             # assign_value2(class_arr, flow_arr[change_ID], C_ID)
                             flow_arr[C_ID].extend(flow_arr[change_ID])
+                            # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
                             # start1 = time.time()
                             # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
                             # end1 = time.time()
@@ -231,9 +239,10 @@ def main(inpath, k, precision):
                                         'weight': weight
 
                                     }
-                                    class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                                    # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
                                     # assign_value2(class_arr, flow_arr[change_ID], C_ID)
-                                    flow_arr[C_ID].extend(flow_arr[change_ID])
+                                    # flow_arr[C_ID].extend(flow_arr[change_ID])
+                                    # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
                                     # class_arr = assign_value(class_arr, change_ID, C_ID)
                                     # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
 
@@ -251,9 +260,10 @@ def main(inpath, k, precision):
                                         'weight': weight
 
                                     }
-                                    class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                                    # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
                                     # assign_value2(class_arr, flow_arr[change_ID], C_ID)
-                                    flow_arr[C_ID].extend(flow_arr[change_ID])
+                                    # flow_arr[C_ID].extend(flow_arr[change_ID])
+                                    # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
                                     # class_arr = assign_value(class_arr, change_ID, C_ID)
                                     # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
 
@@ -268,30 +278,28 @@ def main(inpath, k, precision):
                                         'weight': weight
                                     }
 
-                                    class_arr = assign_value2_nb(class_arr, np.array(flow_arr[p_ID]), C_ID)
-                                    class_arr = assign_value2_nb(class_arr, np.array(flow_arr[q_ID]), C_ID)
+                                    # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[p_ID]), C_ID)
+                                    # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[q_ID]), C_ID)
                                     # assign_value2(class_arr, flow_arr[p_ID], C_ID)
                                     # assign_value2(class_arr, flow_arr[q_ID], C_ID)
-                                    if Cx_ID > Cy_ID:
-                                        # assign_value2(class_arr, flow_arr[Cx_ID], C_ID)
-                                        class_arr = assign_value2_nb(class_arr, np.array(flow_arr[Cx_ID]), C_ID)
-                                        flow_arr[C_ID].extend(flow_arr[Cx_ID])
-                                    else:
-                                        # assign_value2(class_arr, flow_arr[Cy_ID], C_ID)
-                                        class_arr = assign_value2_nb(class_arr, np.array(flow_arr[Cy_ID]), C_ID)
-                                        flow_arr[C_ID].extend(flow_arr[Cy_ID])
+
                                     # class_arr = assign_value(class_arr, p_ID, C_ID)
                                     # class_arr = assign_value(class_arr, q_ID, C_ID)
                                     # if Cx_ID > Cy_ID:
                                     #     class_arr = assign_value(class_arr, Cx_ID, C_ID)
                                     # else:
                                     #     class_arr = assign_value(class_arr, Cy_ID, C_ID)
+
                                     # class_arr = np.where(class_arr == p_ID, C_ID, class_arr)
                                     # class_arr = np.where(class_arr == q_ID, C_ID, class_arr)
                                     # if Cx_ID > Cy_ID:
                                     #     class_arr = np.where(class_arr == Cx_ID, C_ID, class_arr)
                                     # else:
                                     #     class_arr = np.where(class_arr == Cy_ID, C_ID, class_arr)
+
+                                # assign_value2(class_arr, flow_arr[change_ID], C_ID)
+                                class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                                flow_arr[C_ID].extend(flow_arr[change_ID])
                 else:
                     break
 
