@@ -1,4 +1,4 @@
-python od_flow_clustering.py -i "data/2.xlsx" -k 1200
-python od_flow_clustering.py -i "data/2.xlsx" -k 1300
-python od_flow_clustering.py -i "data/2.xlsx" -k 1400
-python od_flow_clustering.py -i "data/2.xlsx" -k 1500
+python od_flow_clustering.py -i "data/2016机动化小区OD_1.xlsx" -k 15
+python od_flow_clustering.py -i "data/2016机动化小区OD_1.xlsx" -k 20
+python od_flow_clustering.py -i "data/2016机动化小区OD_1.xlsx" -k 25
+python od_flow_clustering.py -i "data/2016机动化小区OD_1.xlsx" -k 30

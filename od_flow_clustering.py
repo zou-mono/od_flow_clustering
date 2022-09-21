@@ -73,8 +73,8 @@ def main(inpath, k, precision):
         columns = [col.lower() for col in input_data]
         bWeight = True if 'weight' in columns else False  # 判断是否存在权重字段weight，如果存在则要计算class的权重之和
 
-        O_points = input_data.drop_duplicates(subset='Oid')
-        D_points = input_data.drop_duplicates(subset='Did')
+        O_points = input_data.drop_duplicates(subset='Oid', ignore_index=True)
+        D_points = input_data.drop_duplicates(subset='Did', ignore_index=True)
 
         log.info("生成KD树...")
         # 对O和D分别构建KD树
@@ -131,15 +131,16 @@ def main(inpath, k, precision):
 
             # 根据dist进行排序
             for contiguous_flow_ID in flow_knn:
-                if len(contiguous_flow_pairs) == _k:  # knn自身也会被算进去，要排除掉
-                    break
+                # if len(contiguous_flow_pairs) == _k:  # knn自身也会被算进去，要排除掉
+                #     break
 
                 if iflow_row != contiguous_flow_ID:
                     q_flow = df_knn.iloc[contiguous_flow_ID]
 
                     dist = SNN_flow_distance(p_flow, p_flow, q_flow, q_flow)
                     # contiguous_flow_pairs.loc[i] = [irow, intersect, dist]
-                    contiguous_flow_pairs.append([contiguous_flow_ID, dist])
+                    if dist < 1:
+                        contiguous_flow_pairs.append([contiguous_flow_ID, dist])
             # list(map(lambda n: SNN_list(n, iflow_row, p_flow, contiguous_flow_pairs), flow_knn))
 
             if len(contiguous_flow_pairs) > 1:
@@ -157,151 +158,149 @@ def main(inpath, k, precision):
 
                 # contiguous_flow_pairs是按照距离升序的，如果 dist==1 那么后面所有的pairs都不邻接，则不需要再向下运算直接跳出
                 # 只有 dist < 1 时才向下运算
-                if dist < 1:
-                    # Cx_ID = flow_dict[p_ID]['label']
-                    # Cy_ID = flow_dict[q_ID]['label']
-                    Cx_ID = class_arr.item(p_ID)
-                    Cy_ID = class_arr.item(q_ID)
+                # Cx_ID = flow_dict[p_ID]['label']
+                # Cy_ID = flow_dict[q_ID]['label']
+                Cx_ID = class_arr.item(p_ID)
+                Cy_ID = class_arr.item(q_ID)
 
-                    if Cx_ID != Cy_ID:
-                        # C_ID = Cy_ID if Cx_ID > Cy_ID else Cx_ID # 取比较小的那个class的ID做为合并后class的ID
-                        # change_ID = Cy_ID if Cy_ID > Cx_ID else Cx_ID
-                        if Cx_ID > Cy_ID:
-                            change_ID = Cx_ID
-                            C_ID = Cy_ID
+                if Cx_ID != Cy_ID:
+                    # C_ID = Cy_ID if Cx_ID > Cy_ID else Cx_ID # 取比较小的那个class的ID做为合并后class的ID
+                    # change_ID = Cy_ID if Cy_ID > Cx_ID else Cx_ID
+                    if Cx_ID > Cy_ID:
+                        change_ID = Cx_ID
+                        C_ID = Cy_ID
+                    else:
+                        change_ID = Cy_ID
+                        C_ID = Cx_ID
+
+                    # start = time.time()
+                    # # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                    # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                    # end = time.time()
+                    # print("np.where {}".format((end-start)*1000000))
+
+                    # start = time.time()
+                    # class_arr = assign_value(class_arr, change_ID, C_ID)
+                    # end = time.time()
+                    # print("numba {}".format((end-start)*1000000))
+
+                    # if C_ID == 5677:
+                    #     print("debug")
+
+                    #  如果两条flow都是第一次被访问到，则更新flow_class后结束本次迭代
+                    if Cx_ID == p_ID and Cy_ID == q_ID:
+                        # flow_dict[q_ID]['label'] = Cx_ID
+                        if bWeight:
+                            weight = flow_dict[p_ID]['weight'] + flow_dict[q_ID]['weight']
                         else:
-                            change_ID = Cy_ID
-                            C_ID = Cx_ID
+                            weight = 2
 
-                        # start = time.time()
-                        # # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+                        merge_class[C_ID] = {
+                            'centroid_O': [round((flow_dict[Cx_ID]['Ox'] + flow_dict[Cy_ID]['Ox']) / 2, precision),
+                                            round((flow_dict[Cx_ID]['Oy'] + flow_dict[Cy_ID]['Oy']) / 2, precision)],
+                            'centroid_D': [round((flow_dict[Cx_ID]['Dx'] + flow_dict[Cy_ID]['Dx']) / 2, precision),
+                                            round((flow_dict[Cx_ID]['Dy'] + flow_dict[Cy_ID]['Dy']) / 2, precision)],
+                            'weight': weight
+                        }
+
+                        class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                        # assign_value2(class_arr, flow_arr[change_ID], C_ID)
+                        flow_arr[C_ID].extend(flow_arr[change_ID])
+                        # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
+                        # start1 = time.time()
                         # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
-                        # end = time.time()
-                        # print("np.where {}".format((end-start)*1000000))
+                        # end1 = time.time()
+                        # print("np.where {}".format((end1 - start1) * 1000000))
 
-                        # start = time.time()
+                        # start2 = time.time()
                         # class_arr = assign_value(class_arr, change_ID, C_ID)
-                        # end = time.time()
-                        # print("numba {}".format((end-start)*1000000))
+                        # end2 = time.time()
+                        # print("numba {}".format((end2 - start2) * 1000000))
 
-                        # if C_ID == 5677:
-                        #     print("debug")
+                    #  如果两条flow不是第一次被访问到，则需要重新计算class_distance
+                    else:
+                        class_dist = class_distance(p_ID, q_ID, Cx_ID, Cy_ID, merge_class)
 
-                        #  如果两条flow都是第一次被访问到，则更新flow_class后结束本次迭代
-                        if Cx_ID == p_ID and Cy_ID == q_ID:
-                            # flow_dict[q_ID]['label'] = Cx_ID
-                            if bWeight:
-                                weight = flow_dict[p_ID]['weight'] + flow_dict[q_ID]['weight']
-                            else:
-                                weight = 2
+                        # if Cx_ID != p_ID and Cy_ID != q_ID and class_dist < 1:
+                        #     print("error")
 
-                            merge_class[C_ID] = {
-                                'centroid_O': [round((flow_dict[Cx_ID]['Ox'] + flow_dict[Cy_ID]['Ox']) / 2, precision),
-                                                round((flow_dict[Cx_ID]['Oy'] + flow_dict[Cy_ID]['Oy']) / 2, precision)],
-                                'centroid_D': [round((flow_dict[Cx_ID]['Dx'] + flow_dict[Cy_ID]['Dx']) / 2, precision),
-                                                round((flow_dict[Cx_ID]['Dy'] + flow_dict[Cy_ID]['Dy']) / 2, precision)],
-                                'weight': weight
-                            }
+                        if class_dist < 1:
+                            if Cx_ID != p_ID and Cy_ID == q_ID:
+                                if bWeight:
+                                    weight = merge_class[Cx_ID]['weight'] + flow_dict[q_ID]['weight']
+                                else:
+                                    weight = merge_class[Cx_ID]['weight'] + 1
 
-                            class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
-                            # assign_value2(class_arr, flow_arr[change_ID], C_ID)
-                            flow_arr[C_ID].extend(flow_arr[change_ID])
-                            # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
-                            # start1 = time.time()
-                            # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
-                            # end1 = time.time()
-                            # print("np.where {}".format((end1 - start1) * 1000000))
+                                merge_class[C_ID] = {
+                                    'centroid_O': [round((merge_class[Cx_ID]['centroid_O'][0] + flow_dict[Cy_ID]['Ox']) / 2, precision),
+                                                   round((merge_class[Cx_ID]['centroid_O'][1] + flow_dict[Cy_ID]['Oy']) / 2, precision)],
+                                    'centroid_D': [round((merge_class[Cx_ID]['centroid_D'][0] + flow_dict[Cy_ID]['Dx']) / 2, precision),
+                                                   round((merge_class[Cx_ID]['centroid_D'][1] + flow_dict[Cy_ID]['Dy']) / 2, precision)],
+                                    'weight': weight
 
-                            # start2 = time.time()
-                            # class_arr = assign_value(class_arr, change_ID, C_ID)
-                            # end2 = time.time()
-                            # print("numba {}".format((end2 - start2) * 1000000))
-
-                        #  如果两条flow不是第一次被访问到，则需要重新计算class_distance
-                        else:
-                            class_dist = class_distance(p_ID, q_ID, Cx_ID, Cy_ID, merge_class)
-
-                            # if Cx_ID != p_ID and Cy_ID != q_ID and class_dist < 1:
-                            #     print("error")
-
-                            if class_dist < 1:
-                                if Cx_ID != p_ID and Cy_ID == q_ID:
-                                    if bWeight:
-                                        weight = merge_class[Cx_ID]['weight'] + flow_dict[q_ID]['weight']
-                                    else:
-                                        weight = merge_class[Cx_ID]['weight'] + 1
-
-                                    merge_class[C_ID] = {
-                                        'centroid_O': [round((merge_class[Cx_ID]['centroid_O'][0] + flow_dict[Cy_ID]['Ox']) / 2, precision),
-                                                       round((merge_class[Cx_ID]['centroid_O'][1] + flow_dict[Cy_ID]['Oy']) / 2, precision)],
-                                        'centroid_D': [round((merge_class[Cx_ID]['centroid_D'][0] + flow_dict[Cy_ID]['Dx']) / 2, precision),
-                                                       round((merge_class[Cx_ID]['centroid_D'][1] + flow_dict[Cy_ID]['Dy']) / 2, precision)],
-                                        'weight': weight
-
-                                    }
-                                    # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
-                                    # assign_value2(class_arr, flow_arr[change_ID], C_ID)
-                                    # flow_arr[C_ID].extend(flow_arr[change_ID])
-                                    # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
-                                    # class_arr = assign_value(class_arr, change_ID, C_ID)
-                                    # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
-
-                                elif Cx_ID == p_ID and Cy_ID != q_ID:
-                                    if bWeight:
-                                        weight = merge_class[Cy_ID]['weight'] + flow_dict[p_ID]['weight']
-                                    else:
-                                        weight = merge_class[Cy_ID]['weight'] + 1
-
-                                    merge_class[C_ID] = {
-                                        'centroid_O': [round((merge_class[Cy_ID]['centroid_O'][0] + flow_dict[Cx_ID]['Ox']) / 2, precision),
-                                                       round((merge_class[Cy_ID]['centroid_O'][1] + flow_dict[Cx_ID]['Oy']) / 2, precision)],
-                                        'centroid_D': [round((merge_class[Cy_ID]['centroid_D'][0] + flow_dict[Cx_ID]['Dx']) / 2, precision),
-                                                       round((merge_class[Cy_ID]['centroid_D'][1] + flow_dict[Cx_ID]['Dy']) / 2, precision)],
-                                        'weight': weight
-
-                                    }
-                                    # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
-                                    # assign_value2(class_arr, flow_arr[change_ID], C_ID)
-                                    # flow_arr[C_ID].extend(flow_arr[change_ID])
-                                    # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
-                                    # class_arr = assign_value(class_arr, change_ID, C_ID)
-                                    # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
-
-                                elif Cx_ID != p_ID and Cy_ID != q_ID:
-                                    weight = merge_class[Cx_ID]['weight'] + merge_class[Cy_ID]['weight']
-
-                                    merge_class[C_ID] = {
-                                        'centroid_O': [round((merge_class[Cx_ID]['centroid_O'][0] + merge_class[Cy_ID]['centroid_O'][0]) / 2, precision),
-                                                       round((merge_class[Cx_ID]['centroid_O'][1] + merge_class[Cy_ID]['centroid_O'][1]) / 2, precision)],
-                                        'centroid_D': [round((merge_class[Cx_ID]['centroid_D'][0] + merge_class[Cy_ID]['centroid_D'][0]) / 2, precision),
-                                                       round((merge_class[Cx_ID]['centroid_D'][1] + merge_class[Cy_ID]['centroid_D'][1]) / 2, precision)],
-                                        'weight': weight
-                                    }
-
-                                    # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[p_ID]), C_ID)
-                                    # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[q_ID]), C_ID)
-                                    # assign_value2(class_arr, flow_arr[p_ID], C_ID)
-                                    # assign_value2(class_arr, flow_arr[q_ID], C_ID)
-
-                                    # class_arr = assign_value(class_arr, p_ID, C_ID)
-                                    # class_arr = assign_value(class_arr, q_ID, C_ID)
-                                    # if Cx_ID > Cy_ID:
-                                    #     class_arr = assign_value(class_arr, Cx_ID, C_ID)
-                                    # else:
-                                    #     class_arr = assign_value(class_arr, Cy_ID, C_ID)
-
-                                    # class_arr = np.where(class_arr == p_ID, C_ID, class_arr)
-                                    # class_arr = np.where(class_arr == q_ID, C_ID, class_arr)
-                                    # if Cx_ID > Cy_ID:
-                                    #     class_arr = np.where(class_arr == Cx_ID, C_ID, class_arr)
-                                    # else:
-                                    #     class_arr = np.where(class_arr == Cy_ID, C_ID, class_arr)
-
+                                }
+                                # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
                                 # assign_value2(class_arr, flow_arr[change_ID], C_ID)
-                                class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
-                                flow_arr[C_ID].extend(flow_arr[change_ID])
-                else:
-                    break
+                                # flow_arr[C_ID].extend(flow_arr[change_ID])
+                                # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
+                                # class_arr = assign_value(class_arr, change_ID, C_ID)
+                                # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+
+                            elif Cx_ID == p_ID and Cy_ID != q_ID:
+                                if bWeight:
+                                    weight = merge_class[Cy_ID]['weight'] + flow_dict[p_ID]['weight']
+                                else:
+                                    weight = merge_class[Cy_ID]['weight'] + 1
+
+                                merge_class[C_ID] = {
+                                    'centroid_O': [round((merge_class[Cy_ID]['centroid_O'][0] + flow_dict[Cx_ID]['Ox']) / 2, precision),
+                                                   round((merge_class[Cy_ID]['centroid_O'][1] + flow_dict[Cx_ID]['Oy']) / 2, precision)],
+                                    'centroid_D': [round((merge_class[Cy_ID]['centroid_D'][0] + flow_dict[Cx_ID]['Dx']) / 2, precision),
+                                                   round((merge_class[Cy_ID]['centroid_D'][1] + flow_dict[Cx_ID]['Dy']) / 2, precision)],
+                                    'weight': weight
+
+                                }
+                                # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                                # assign_value2(class_arr, flow_arr[change_ID], C_ID)
+                                # flow_arr[C_ID].extend(flow_arr[change_ID])
+                                # flow_arr[C_ID] = list(chain(flow_arr[C_ID], flow_arr[change_ID]))
+                                # class_arr = assign_value(class_arr, change_ID, C_ID)
+                                # class_arr = np.where(class_arr == change_ID, C_ID, class_arr)
+
+                            elif Cx_ID != p_ID and Cy_ID != q_ID:
+                                weight = merge_class[Cx_ID]['weight'] + merge_class[Cy_ID]['weight']
+
+                                merge_class[C_ID] = {
+                                    'centroid_O': [round((merge_class[Cx_ID]['centroid_O'][0] + merge_class[Cy_ID]['centroid_O'][0]) / 2, precision),
+                                                   round((merge_class[Cx_ID]['centroid_O'][1] + merge_class[Cy_ID]['centroid_O'][1]) / 2, precision)],
+                                    'centroid_D': [round((merge_class[Cx_ID]['centroid_D'][0] + merge_class[Cy_ID]['centroid_D'][0]) / 2, precision),
+                                                   round((merge_class[Cx_ID]['centroid_D'][1] + merge_class[Cy_ID]['centroid_D'][1]) / 2, precision)],
+                                    'weight': weight
+                                }
+
+                                # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[p_ID]), C_ID)
+                                # class_arr = assign_value2_nb(class_arr, np.array(flow_arr[q_ID]), C_ID)
+                                # assign_value2(class_arr, flow_arr[p_ID], C_ID)
+                                # assign_value2(class_arr, flow_arr[q_ID], C_ID)
+
+                                # class_arr = assign_value(class_arr, p_ID, C_ID)
+                                # class_arr = assign_value(class_arr, q_ID, C_ID)
+                                # if Cx_ID > Cy_ID:
+                                #     class_arr = assign_value(class_arr, Cx_ID, C_ID)
+                                # else:
+                                #     class_arr = assign_value(class_arr, Cy_ID, C_ID)
+
+                                # class_arr = np.where(class_arr == p_ID, C_ID, class_arr)
+                                # class_arr = np.where(class_arr == q_ID, C_ID, class_arr)
+                                # if Cx_ID > Cy_ID:
+                                #     class_arr = np.where(class_arr == Cx_ID, C_ID, class_arr)
+                                # else:
+                                #     class_arr = np.where(class_arr == Cy_ID, C_ID, class_arr)
+
+                            # assign_value2(class_arr, flow_arr[change_ID], C_ID)
+                            class_arr = assign_value2_nb(class_arr, np.array(flow_arr[change_ID]), C_ID)
+                            flow_arr[C_ID].extend(flow_arr[change_ID])
+
 
             if int(iflow_row * 100 / total_count) == iprop * 20:
                 log.info("{:.0%}已处理完成...".format(iflow_row / total_count))
@@ -533,20 +532,26 @@ def row_knn(O, D, O_points, D_points):
     #  k近邻实际上求的是k+1近邻，因为会把自身也算进去
     log.info("KD树检索...")
     closest_O = tree_O.query(O, _k + 1, return_distance=False)
+    closest_O = closest_O[:,1:]
     # log.info("计算D点的KNN...")
     closest_D = tree_D.query(D, _k + 1, return_distance=False)
+    closest_D = closest_D[:,1:]
 
     df = pd.DataFrame(columns=['O_knn', 'D_knn'])
     OD_id = input_data[['Oid', 'Did']]
 
     log.info("计算O点KNN...")
-    OD_id = OD_id.to_dict()
-    vfunc_O = np.vectorize(lambda n: OD_id['Oid'][n])
-    vfunc_D = np.vectorize(lambda n: OD_id['Did'][n])
-
-    log.info("计算D点KNN...")
+    # OD_id = OD_id.to_dict()
+    # vfunc_O = np.vectorize(lambda n: OD_id['Oid'][n])
+    # vfunc_D = np.vectorize(lambda n: OD_id['Did'][n])
+    OD_id = O_points['Oid'].to_dict()
+    vfunc_O = np.vectorize(lambda n: OD_id[n])
     closest_pt = vfunc_O(closest_O)
     df['O_knn'] = np.array(closest_pt).tolist()
+
+    log.info("计算D点KNN...")
+    OD_id = D_points['Did'].to_dict()
+    vfunc_D = np.vectorize(lambda n: OD_id[n])
     closest_pt = vfunc_D(closest_D)
     df['D_knn'] = np.array(closest_pt).tolist()
 
@@ -611,7 +616,7 @@ def row_knn(O, D, O_points, D_points):
 
     # 更快
     log.info("计算flow的KNN...")
-    df['flow_knn'] = [list(set(a).intersection(b)) for a, b in zip(df['O_flow_knn'], df['D_flow_knn'])]
+    df['flow_knn'] = [list(set(a).intersection(set(b))) for a, b in zip(df['O_flow_knn'], df['D_flow_knn'])]
 
     return df
 
