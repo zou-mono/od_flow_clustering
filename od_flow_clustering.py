@@ -53,13 +53,14 @@ def main(inpath, k, precision):
 
         global output_flow_file
         global output_point_file
+        global output_mergeflow_file
         global log_file
         global _precision
         global _k
         _precision = precision
         _k = k
 
-        output_flow_file, output_point_file = check_and_create_outpath()
+        output_flow_file, output_point_file, output_mergeflow_file = check_and_create_outpath()
 
         global input_data
 
@@ -287,6 +288,7 @@ def check_and_create_outpath():
     log_file = os.path.join(log_path, '{}.log'.format(time.strftime('%Y-%m-%d-%H-%M-%S')))
     output_flow_file = os.path.join(res_path, "{}_flow_k={}.csv".format(time.strftime('%Y-%m-%d-%H-%M-%S'), _k))
     output_point_file = os.path.join(res_path, "{}_point_k={}.csv".format(time.strftime('%Y-%m-%d-%H-%M-%S'), _k))
+    output_mergeflow_file = os.path.join(res_path, "{}_mergeflow_k={}.csv".format(time.strftime('%Y-%m-%d-%H-%M-%S'), _k))
 
     formatter = colorlog.ColoredFormatter(
         '%(log_color)s[%(asctime)s] [%(filename)s:%(funcName)s:%(lineno)d] [%(levelname)s]- %(message)s',
@@ -303,7 +305,7 @@ def check_and_create_outpath():
     fh.setFormatter(formatter)
     log.addHandler(fh)
 
-    return output_flow_file, output_point_file
+    return output_flow_file, output_point_file, output_mergeflow_file
 
 
 #  将分类结果输出
@@ -362,33 +364,42 @@ def output_class(class_arr, merge_class):
             irow += 1
 
     header = ['from', 'to', 'weight']
-    with open(output_flow_file, 'w+',  newline='') as o:
-        writer = csv.writer(o)
-        writer.writerow(header)
+    o1 = open(output_flow_file, 'w+',  newline='')
+    writer_flow = csv.writer(o1)
+    o2 = open(output_mergeflow_file, 'w+',  newline='')
+    write_mergeflow = csv.writer(o2)
 
-        for cls in np.nditer(class_arr):
-            cID = cls.item()  # class的flow ID号
+    writer_flow.writerow(header)
+    write_mergeflow.writerow(header)
 
-            row = []
+    for cls in np.nditer(class_arr):
+        cID = cls.item()  # class的flow ID号
 
-            #  如果cID在merge_class中，说明该类是合并了flow后生成的，则直接输出merge_class中对应的坐标
-            #  否则，cID还是原始的一个flow一个类，则输出
-            if cID in merge_class:
-                cls = merge_class[cID]
-                pt_ID = "{}-{}".format(cls['centroid_O'][0], cls['centroid_O'][1])
-                row.append(centroids[pt_ID]['id'])
-                pt_ID = "{}-{}".format(cls['centroid_D'][0], cls['centroid_D'][1])
-                row.append(centroids[pt_ID]['id'])
+        row = []
+
+        #  如果cID在merge_class中，说明该类是合并了flow后生成的，则直接输出merge_class中对应的坐标
+        #  否则，cID还是原始的一个flow一个类，则输出
+        if cID in merge_class:
+            cls = merge_class[cID]
+            pt_ID = "{}-{}".format(cls['centroid_O'][0], cls['centroid_O'][1])
+            row.append(centroids[pt_ID]['id'])
+            pt_ID = "{}-{}".format(cls['centroid_D'][0], cls['centroid_D'][1])
+            row.append(centroids[pt_ID]['id'])
+            row.append(cls['weight'])
+
+            write_mergeflow.writerow(row)
+        else:
+            cls = flow_dict[cID]
+            row.append(cls['Oid'])
+            row.append(cls['Did'])
+            if bWeight:
                 row.append(cls['weight'])
             else:
-                cls = flow_dict[cID]
-                row.append(cls['Oid'])
-                row.append(cls['Did'])
-                if bWeight:
-                    row.append(cls['weight'])
-                else:
-                    row.append(1)
-            writer.writerow(row)
+                row.append(1)
+        writer_flow.writerow(row)
+
+    o1.close()
+    o2.close()
 
     # print("debug")
 
